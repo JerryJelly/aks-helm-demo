@@ -1,1 +1,46 @@
+name: Deploy to AKS
 
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - uses: actions/checkout@v3
+
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Login to ACR
+      run: |
+        docker login ${{ secrets.ACR_LOGIN_SERVER }} \
+        -u ${{ secrets.ACR_USERNAME }} \
+        -p ${{ secrets.ACR_PASSWORD }}
+
+    - name: Build Image
+      run: |
+        docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/myapp:${{ github.sha }} ./app
+
+    - name: Push Image
+      run: |
+        docker push ${{ secrets.ACR_LOGIN_SERVER }}/myapp:${{ github.sha }}
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials \
+          --resource-group rg-container-lab \
+          --name jerry-aks-cluster \
+          --overwrite-existing
+
+    - name: Deploy with Helm
+      run: |
+        helm upgrade --install myapp ./chart/myapp \
+          --set image.repository=${{ secrets.ACR_LOGIN_SERVER }}/myapp \
+          --set image.tag=${{ github.sha }}
